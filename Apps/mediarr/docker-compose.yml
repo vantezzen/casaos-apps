@@ -17,7 +17,6 @@ x-common-env: &common-env
 # ─── Services ────────────────────────────────────────────────────────────────
 
 services:
-
   # ── Mediarr Hub — Landing page / dashboard for all services ─────────────────
   #
   # A lightweight nginx page that serves as the homescreen entry point.
@@ -29,7 +28,7 @@ services:
     network_mode: bridge
     ports:
       - target: 80
-        published: "8888"
+        published: "8974"
         protocol: tcp
     deploy:
       resources:
@@ -40,241 +39,241 @@ services:
       - /bin/sh
       - -c
       - |
-          cat > /usr/share/nginx/html/index.html << 'HTMLEOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Mediarr</title>
-            <style>
-              *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #0d1117;
-                color: #e6edf3;
-                min-height: 100vh;
-                padding: 2.5rem 1.5rem;
-              }
-              header {
-                text-align: center;
-                margin-bottom: 2.5rem;
-              }
-              .logo {
-                font-size: 2.75rem;
-                font-weight: 800;
-                letter-spacing: -0.03em;
-                background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 50%, #fd79a8 100%);
-                -webkit-background-clip: text;
-                -webkit-text-fill-color: transparent;
-                background-clip: text;
-                margin-bottom: 0.4rem;
-              }
-              .subtitle {
-                color: #6e7681;
-                font-size: 0.9rem;
-              }
-              .grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-                gap: 1rem;
-                max-width: 1100px;
-                margin: 0 auto;
-              }
-              .card {
-                background: #161b22;
-                border: 1px solid #21262d;
-                border-radius: 12px;
-                padding: 1.25rem 1.5rem;
-                text-decoration: none;
-                color: inherit;
-                display: flex;
-                flex-direction: column;
-                gap: 0.6rem;
-                transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
-              }
-              .card:hover {
-                border-color: #6c5ce7;
-                transform: translateY(-2px);
-                box-shadow: 0 8px 32px rgba(108, 92, 231, 0.18);
-              }
-              .card-top {
-                display: flex;
-                align-items: center;
-                gap: 0.85rem;
-              }
-              .icon-wrap {
-                width: 46px;
-                height: 46px;
-                border-radius: 10px;
-                background: #21262d;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 1.5rem;
-                flex-shrink: 0;
-              }
-              .card-name {
-                flex: 1;
-              }
-              .card-name h3 {
-                font-size: 1rem;
-                font-weight: 600;
-                line-height: 1.3;
-              }
-              .card-port {
-                font-size: 0.7rem;
-                color: #6e7681;
-                font-family: 'SF Mono', 'Fira Code', monospace;
-                margin-top: 1px;
-              }
-              .dot {
-                width: 9px;
-                height: 9px;
-                border-radius: 50%;
-                background: #21262d;
-                flex-shrink: 0;
-                transition: background 0.4s, box-shadow 0.4s;
-              }
-              .dot.up   { background: #3fb950; box-shadow: 0 0 7px rgba(63,185,80,0.6); }
-              .dot.down { background: #f85149; }
-              .card-desc {
-                font-size: 0.8rem;
-                color: #6e7681;
-                line-height: 1.55;
-              }
-              .badge {
-                display: inline-flex;
-                align-items: center;
-                gap: 3px;
-                font-size: 0.65rem;
-                font-weight: 500;
-                color: #a29bfe;
-                background: rgba(108, 92, 231, 0.12);
-                border: 1px solid rgba(108, 92, 231, 0.25);
-                border-radius: 4px;
-                padding: 2px 7px;
-                width: fit-content;
-              }
-              footer {
-                text-align: center;
-                margin-top: 2.5rem;
-                color: #30363d;
-                font-size: 0.75rem;
-              }
-            </style>
-          </head>
-          <body>
-            <header>
-              <div class="logo">Mediarr</div>
-              <p class="subtitle">VPN-protected home media stack</p>
-            </header>
+        cat > /usr/share/nginx/html/index.html << 'HTMLEOF'
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Mediarr</title>
+          <style>
+            *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              background: #0d1117;
+              color: #e6edf3;
+              min-height: 100vh;
+              padding: 2.5rem 1.5rem;
+            }
+            header {
+              text-align: center;
+              margin-bottom: 2.5rem;
+            }
+            .logo {
+              font-size: 2.75rem;
+              font-weight: 800;
+              letter-spacing: -0.03em;
+              background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 50%, #fd79a8 100%);
+              -webkit-background-clip: text;
+              -webkit-text-fill-color: transparent;
+              background-clip: text;
+              margin-bottom: 0.4rem;
+            }
+            .subtitle {
+              color: #6e7681;
+              font-size: 0.9rem;
+            }
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+              gap: 1rem;
+              max-width: 1100px;
+              margin: 0 auto;
+            }
+            .card {
+              background: #161b22;
+              border: 1px solid #21262d;
+              border-radius: 12px;
+              padding: 1.25rem 1.5rem;
+              text-decoration: none;
+              color: inherit;
+              display: flex;
+              flex-direction: column;
+              gap: 0.6rem;
+              transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+            }
+            .card:hover {
+              border-color: #6c5ce7;
+              transform: translateY(-2px);
+              box-shadow: 0 8px 32px rgba(108, 92, 231, 0.18);
+            }
+            .card-top {
+              display: flex;
+              align-items: center;
+              gap: 0.85rem;
+            }
+            .icon-wrap {
+              width: 46px;
+              height: 46px;
+              border-radius: 10px;
+              background: #21262d;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 1.5rem;
+              flex-shrink: 0;
+            }
+            .card-name {
+              flex: 1;
+            }
+            .card-name h3 {
+              font-size: 1rem;
+              font-weight: 600;
+              line-height: 1.3;
+            }
+            .card-port {
+              font-size: 0.7rem;
+              color: #6e7681;
+              font-family: 'SF Mono', 'Fira Code', monospace;
+              margin-top: 1px;
+            }
+            .dot {
+              width: 9px;
+              height: 9px;
+              border-radius: 50%;
+              background: #21262d;
+              flex-shrink: 0;
+              transition: background 0.4s, box-shadow 0.4s;
+            }
+            .dot.up   { background: #3fb950; box-shadow: 0 0 7px rgba(63,185,80,0.6); }
+            .dot.down { background: #f85149; }
+            .card-desc {
+              font-size: 0.8rem;
+              color: #6e7681;
+              line-height: 1.55;
+            }
+            .badge {
+              display: inline-flex;
+              align-items: center;
+              gap: 3px;
+              font-size: 0.65rem;
+              font-weight: 500;
+              color: #a29bfe;
+              background: rgba(108, 92, 231, 0.12);
+              border: 1px solid rgba(108, 92, 231, 0.25);
+              border-radius: 4px;
+              padding: 2px 7px;
+              width: fit-content;
+            }
+            footer {
+              text-align: center;
+              margin-top: 2.5rem;
+              color: #30363d;
+              font-size: 0.75rem;
+            }
+          </style>
+        </head>
+        <body>
+          <header>
+            <div class="logo">Mediarr</div>
+            <p class="subtitle">VPN-protected home media stack</p>
+          </header>
 
-            <div class="grid" id="grid"></div>
+          <div class="grid" id="grid"></div>
 
-            <footer>All torrent traffic is routed through your VPN &bull; Status auto-refreshes every 30s</footer>
+          <footer>All torrent traffic is routed through your VPN &bull; Status auto-refreshes every 30s</footer>
 
-            <script>
-              const host = window.location.hostname;
+          <script>
+            const host = window.location.hostname;
 
-              const services = [
-                {
-                  id: 'jellyfin',
-                  name: 'Jellyfin',
-                  icon: '🎬',
-                  port: 8096,
-                  desc: 'Stream your movies and TV shows to any device',
-                  vpn: false
-                },
-                {
-                  id: 'jellyseerr',
-                  name: 'Jellyseerr',
-                  icon: '🔍',
-                  port: 5055,
-                  desc: 'Browse and request new movies and TV shows',
-                  vpn: true
-                },
-                {
-                  id: 'radarr',
-                  name: 'Radarr',
-                  icon: '🎥',
-                  port: 7878,
-                  desc: 'Automatic movie collection manager',
-                  vpn: true
-                },
-                {
-                  id: 'sonarr',
-                  name: 'Sonarr',
-                  icon: '📺',
-                  port: 8989,
-                  desc: 'Automatic TV show collection manager',
-                  vpn: true
-                },
-                {
-                  id: 'prowlarr',
-                  name: 'Prowlarr',
-                  icon: '📡',
-                  port: 9696,
-                  desc: 'Indexer manager — syncs trackers across all apps',
-                  vpn: true
-                },
-                {
-                  id: 'qbittorrent',
-                  name: 'qBittorrent',
-                  icon: '⬇️',
-                  port: 8080,
-                  desc: 'BitTorrent client with web interface',
-                  vpn: true
-                }
-              ];
+            const services = [
+              {
+                id: 'jellyfin',
+                name: 'Jellyfin',
+                icon: '🎬',
+                port: 8096,
+                desc: 'Stream your movies and TV shows to any device',
+                vpn: false
+              },
+              {
+                id: 'jellyseerr',
+                name: 'Jellyseerr',
+                icon: '🔍',
+                port: 5055,
+                desc: 'Browse and request new movies and TV shows',
+                vpn: true
+              },
+              {
+                id: 'radarr',
+                name: 'Radarr',
+                icon: '🎥',
+                port: 7878,
+                desc: 'Automatic movie collection manager',
+                vpn: true
+              },
+              {
+                id: 'sonarr',
+                name: 'Sonarr',
+                icon: '📺',
+                port: 8989,
+                desc: 'Automatic TV show collection manager',
+                vpn: true
+              },
+              {
+                id: 'prowlarr',
+                name: 'Prowlarr',
+                icon: '📡',
+                port: 9696,
+                desc: 'Indexer manager — syncs trackers across all apps',
+                vpn: true
+              },
+              {
+                id: 'qbittorrent',
+                name: 'qBittorrent',
+                icon: '⬇️',
+                port: 8080,
+                desc: 'BitTorrent client with web interface',
+                vpn: true
+              }
+            ];
 
-              const grid = document.getElementById('grid');
+            const grid = document.getElementById('grid');
 
-              services.forEach(function(s) {
-                const url = 'http://' + host + ':' + s.port;
-                const card = document.createElement('a');
-                card.href = url;
-                card.target = '_blank';
-                card.rel = 'noopener noreferrer';
-                card.className = 'card';
-                card.innerHTML =
-                  '<div class="card-top">' +
-                    '<div class="icon-wrap">' + s.icon + '</div>' +
-                    '<div class="card-name">' +
-                      '<h3>' + s.name + '</h3>' +
-                      '<div class="card-port">:' + s.port + '</div>' +
-                    '</div>' +
-                    '<div class="dot" id="dot-' + s.id + '"></div>' +
+            services.forEach(function(s) {
+              const url = 'http://' + host + ':' + s.port;
+              const card = document.createElement('a');
+              card.href = url;
+              card.target = '_blank';
+              card.rel = 'noopener noreferrer';
+              card.className = 'card';
+              card.innerHTML =
+                '<div class="card-top">' +
+                  '<div class="icon-wrap">' + s.icon + '</div>' +
+                  '<div class="card-name">' +
+                    '<h3>' + s.name + '</h3>' +
+                    '<div class="card-port">:' + s.port + '</div>' +
                   '</div>' +
-                  '<div class="card-desc">' + s.desc + '</div>' +
-                  (s.vpn ? '<span class="badge">🔒 VPN</span>' : '');
-                grid.appendChild(card);
+                  '<div class="dot" id="dot-' + s.id + '"></div>' +
+                '</div>' +
+                '<div class="card-desc">' + s.desc + '</div>' +
+                (s.vpn ? '<span class="badge">🔒 VPN</span>' : '');
+              grid.appendChild(card);
+            });
+
+            function checkAll() {
+              services.forEach(function(s) {
+                const dot = document.getElementById('dot-' + s.id);
+                const url = 'http://' + host + ':' + s.port;
+                const ctrl = new AbortController();
+                const timer = setTimeout(function() { ctrl.abort(); }, 4000);
+                fetch(url, { mode: 'no-cors', signal: ctrl.signal })
+                  .then(function() {
+                    clearTimeout(timer);
+                    dot.className = 'dot up';
+                  })
+                  .catch(function() {
+                    dot.className = 'dot down';
+                  });
               });
+            }
 
-              function checkAll() {
-                services.forEach(function(s) {
-                  const dot = document.getElementById('dot-' + s.id);
-                  const url = 'http://' + host + ':' + s.port;
-                  const ctrl = new AbortController();
-                  const timer = setTimeout(function() { ctrl.abort(); }, 4000);
-                  fetch(url, { mode: 'no-cors', signal: ctrl.signal })
-                    .then(function() {
-                      clearTimeout(timer);
-                      dot.className = 'dot up';
-                    })
-                    .catch(function() {
-                      dot.className = 'dot down';
-                    });
-                });
-              }
-
-              checkAll();
-              setInterval(checkAll, 30000);
-            </script>
-          </body>
-          </html>
-          HTMLEOF
-          exec nginx -g 'daemon off;'
+            checkAll();
+            setInterval(checkAll, 30000);
+          </script>
+        </body>
+        </html>
+        HTMLEOF
+        exec nginx -g 'daemon off;'
     x-casaos:
       ports:
         - container: "80"
@@ -288,8 +287,7 @@ services:
     cap_add:
       - NET_ADMIN
     networks:
-      mediarr_net:
-        ipv4_address: 172.20.0.8
+      - mediarr_net
     volumes:
       - type: bind
         source: /DATA/AppData/$AppID/gluetun
@@ -724,7 +722,7 @@ services:
           if ! grep -q "^WebUI.AuthSubnetWhitelistEnabled=true" "$QB_CONF"; then
             echo "[mediarr-configurator] Enabling qBittorrent subnet whitelist..."
             sed -i "/^\[Preferences\]/a WebUI\\\\AuthSubnetWhitelistEnabled=true" "$QB_CONF" || true
-            sed -i "/^\[Preferences\]/a WebUI\\\\AuthSubnetWhitelist=127.0.0.0/8" "$QB_CONF" || true
+            sed -i "/^\[Preferences\]/a WebUI\\\\AuthSubnetWhitelist=127.0.0.0/8,172.16.0.0/12,10.0.0.0/8" "$QB_CONF" || true
           fi
         else
           echo "[mediarr-configurator] qBittorrent config not found yet, will retry on next run."
@@ -836,9 +834,6 @@ networks:
   mediarr_net:
     name: mediarr_net
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
 
 # ─── CasaOS App Metadata ─────────────────────────────────────────────────────
 
@@ -881,7 +876,7 @@ x-casaos:
   title:
     en_us: Mediarr
   index: /
-  port_map: "8888"
+  port_map: "8974"
   tips:
     before_install:
       en_us: |
@@ -908,11 +903,11 @@ x-casaos:
 
         ## Services & Ports
 
-        Open the **Mediarr Hub** at `:8888` to access all services from one place.
+        Open the **Mediarr Hub** at `:8974` to access all services from one place.
 
         | Service | Port |
         |---|---|
-        | Mediarr Hub | `:8888` |
+        | Mediarr Hub | `:8974` |
         | Jellyfin | `:8096` |
         | Jellyseerr | `:5055` |
         | Radarr | `:7878` |
