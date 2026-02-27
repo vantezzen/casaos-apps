@@ -294,25 +294,25 @@ services:
         target: /tmp/gluetun
     environment:
       # VPN provider — supports all Gluetun providers (protonvpn, mullvad, nordvpn, etc.)
-      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER:-protonvpn}
+      VPN_SERVICE_PROVIDER: protonvpn
       # VPN protocol — openvpn or wireguard
-      VPN_TYPE: ${VPN_TYPE:-openvpn}
+      VPN_TYPE: openvpn
       # OpenVPN credentials (used when VPN_TYPE=openvpn)
-      OPENVPN_USER: ${OPENVPN_USER:-}
-      OPENVPN_PASSWORD: ${OPENVPN_PASSWORD:-}
+      OPENVPN_USER: ""
+      OPENVPN_PASSWORD: ""
       # WireGuard credentials (used when VPN_TYPE=wireguard)
-      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:-}
-      WIREGUARD_ADDRESS: ${WIREGUARD_ADDRESS:-}
+      WIREGUARD_PRIVATE_KEY: ""
+      WIREGUARD_ADDRESS: ""
       # Server preference
-      SERVER_COUNTRIES: ${SERVER_COUNTRIES:-Netherlands}
+      SERVER_COUNTRIES: Netherlands
       # Port forwarding (set to off if your VPN provider doesn't support it)
-      VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-on}
+      VPN_PORT_FORWARDING: "on"
       # When a forwarded port is obtained, update qBittorrent's listening port automatically
       VPN_PORT_FORWARDING_UP_COMMAND: >-
         /bin/sh -c
         'wget -q -O- --post-data "json={\"listen_port\":{{PORT}}}"
         "http://localhost:8080/api/v2/app/setPreferences" 2>/dev/null; true'
-      LOG_LEVEL: ${GLUETUN_LOG_LEVEL:-warning}
+      LOG_LEVEL: warning
     ports:
       # qBittorrent WebUI
       - target: 8080
@@ -507,7 +507,7 @@ services:
     image: ghcr.io/flaresolverr/flaresolverr:v3.4.5
     environment:
       TZ: $TZ
-      LOG_LEVEL: ${FLARESOLVERR_LOG_LEVEL:-info}
+      LOG_LEVEL: info
       LOG_HTML: "false"
       CAPTCHA_SOLVER: "none"
     <<: *vpn-service
