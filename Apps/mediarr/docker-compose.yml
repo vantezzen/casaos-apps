@@ -14,6 +14,10 @@ x-common-env: &common-env
   PGID: $PGID
   TZ: $TZ
 
+x-services-auth: &services-auth
+  SERVICES_USERNAME: admin
+  SERVICES_PASSWORD: "mediarr"
+
 # ─── Services ────────────────────────────────────────────────────────────────
 
 services:
@@ -475,6 +479,60 @@ services:
           description:
             en_us: Download directory (shared with qBittorrent)
 
+  # ── qBittorrent Credential Setup — Runs once before qBittorrent starts ──────
+  #
+  # Creates qBittorrent.conf with a PBKDF2-hashed password derived from
+  # SERVICES_PASSWORD before qBittorrent starts, so it never generates a random
+  # temporary password. Uses /state/qb-credentials-set as a one-shot flag.
+  qb-setup:
+    image: alpine:3.19
+    network_mode: none
+    environment:
+      <<: *services-auth
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/qbittorrent
+        target: /qb-config
+      - type: bind
+        source: /DATA/AppData/$AppID/configurator
+        target: /state
+    restart: on-failure
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        if [ -f /state/qb-credentials-set ]; then
+          echo "[qb-setup] Credentials already configured."
+          exit 0
+        fi
+        echo "[qb-setup] Writing qBittorrent credentials..."
+        apk add --no-cache python3 > /dev/null 2>&1
+        python3 - << 'PYEOF'
+        import hashlib, os, base64, sys
+        username = os.environ.get("SERVICES_USERNAME", "admin")
+        password = os.environ.get("SERVICES_PASSWORD", "")
+        conf_dir = "/qb-config/qBittorrent/config"
+        os.makedirs(conf_dir, exist_ok=True)
+        conf_file = conf_dir + "/qBittorrent.conf"
+        if os.path.exists(conf_file):
+            print("[qb-setup] qBittorrent.conf already exists, skipping.")
+            sys.exit(0)
+        salt = os.urandom(16)
+        dk = hashlib.pbkdf2_hmac("sha512", password.encode("utf-8"), salt, 100000)
+        hash_str = "@ByteArray(" + base64.b64encode(salt).decode() + ":" + base64.b64encode(dk).decode() + ")"
+        config  = "[Preferences]\n"
+        config += "WebUI\\Username=" + username + "\n"
+        config += "WebUI\\Password_PBKDF2=" + hash_str + "\n"
+        config += "WebUI\\AuthSubnetWhitelistEnabled=true\n"
+        config += "WebUI\\AuthSubnetWhitelist=127.0.0.0/8\n"
+        with open(conf_file, "w") as f:
+            f.write(config)
+        print("[qb-setup] Credentials written (user: " + username + ")")
+        PYEOF
+        touch /state/qb-credentials-set
+        echo "[qb-setup] Done."
+
   # ── qBittorrent — Torrent Client ─────────────────────────────────────────────
   qbittorrent:
     image: linuxserver/qbittorrent:4.6.7
@@ -489,6 +547,11 @@ services:
         source: /DATA/Downloads
         target: /downloads
     <<: *vpn-service
+    depends_on:
+      vpn:
+        condition: service_healthy
+      qb-setup:
+        condition: service_completed_successfully
     x-casaos:
       envs:
         - container: WEBUI_PORT
@@ -615,6 +678,8 @@ services:
   # starts are instant no-ops.
   configurator:
     image: alpine:3.19
+    environment:
+      <<: *services-auth
     depends_on:
       vpn:
         condition: service_healthy
@@ -647,8 +712,10 @@ services:
       - type: bind
         source: /DATA/AppData/$AppID/configurator
         target: /state
-    command: |
-      /bin/sh -c '
+    command:
+      - /bin/sh
+      - -c
+      - |
         set -e
 
         # ── Guard: skip if already configured ─────────────────────────────────
@@ -658,7 +725,7 @@ services:
         fi
 
         echo "[mediarr-configurator] Starting auto-configuration..."
-        apk add --no-cache curl > /dev/null 2>&1
+        apk add --no-cache curl jq > /dev/null 2>&1
 
         # ── Helper functions ───────────────────────────────────────────────────
 
@@ -697,30 +764,10 @@ services:
             -d "$4" "http://localhost:$1$3"
         }
 
-        # ── Phase 2: Configure qBittorrent ────────────────────────────────────
-        QB_CONF="/qbittorrent-config/qBittorrent/config/qBittorrent.conf"
-        echo "[mediarr-configurator] Waiting for qBittorrent config..."
-        n=0; while [ $n -lt 120 ]; do
-          [ -f "$QB_CONF" ] && break
-          sleep 2; n=$((n+2))
-        done
-
-        if [ -f "$QB_CONF" ]; then
-          # Inject adminadmin password hash if not yet set
-          if ! grep -q "^WebUI.Password_PBKDF2" "$QB_CONF"; then
-            echo "[mediarr-configurator] Setting qBittorrent default password (adminadmin)..."
-            sed -i "/^\[Preferences\]/a WebUI\\\\Password_PBKDF2=\"@ByteArray(gTzqQHUv3A1X43tLaAhaJQ==:ZBCIBA4honNZ7H66xdEoHpqBC/Vvwj17ZCjQKARSK78ScJWDMdWSfxezHG536UekAL/zpRn571MXCfhtdqiArA==)\"" "$QB_CONF" || true
-          fi
-          # Allow API access from localhost without auth (enables VPN port forwarding command)
-          if ! grep -q "^WebUI.AuthSubnetWhitelistEnabled=true" "$QB_CONF"; then
-            echo "[mediarr-configurator] Enabling qBittorrent subnet whitelist..."
-            sed -i "/^\[Preferences\]/a WebUI\\\\AuthSubnetWhitelistEnabled=true" "$QB_CONF" || true
-            sed -i "/^\[Preferences\]/a WebUI\\\\AuthSubnetWhitelist=127.0.0.0/8,172.16.0.0/12,10.0.0.0/8" "$QB_CONF" || true
-          fi
-        else
-          echo "[mediarr-configurator] qBittorrent config not found yet, will retry on next run."
-          exit 1
-        fi
+        api_put() {
+          curl -sf -X PUT -H "X-Api-Key: $2" -H "Content-Type: application/json" \
+            -d "$4" "http://localhost:$1$3"
+        }
 
         # ── Phase 3: Wait for *arr API keys ───────────────────────────────────
         wait_for_file /radarr-config/config.xml "Radarr config"
@@ -746,7 +793,7 @@ services:
         EXISTING_CLIENTS=$(api_get 7878 "$RADARR_KEY" /api/v3/downloadclient)
         if ! echo "$EXISTING_CLIENTS" | grep -q '"QBittorrent"'; then
           api_post 7878 "$RADARR_KEY" /api/v3/downloadclient \
-            "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"fields\":[{\"name\":\"host\",\"value\":\"localhost\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"username\",\"value\":\"admin\"},{\"name\":\"password\",\"value\":\"adminadmin\"},{\"name\":\"movieCategory\",\"value\":\"radarr\"},{\"name\":\"recentMoviePriority\",\"value\":0},{\"name\":\"olderMoviePriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}" > /dev/null
+            "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"fields\":[{\"name\":\"host\",\"value\":\"localhost\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"username\",\"value\":\"$SERVICES_USERNAME\"},{\"name\":\"password\",\"value\":\"$SERVICES_PASSWORD\"},{\"name\":\"movieCategory\",\"value\":\"radarr\"},{\"name\":\"recentMoviePriority\",\"value\":0},{\"name\":\"olderMoviePriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}" > /dev/null
           echo "[mediarr-configurator] Radarr: qBittorrent download client added."
         else
           echo "[mediarr-configurator] Radarr: qBittorrent already configured."
@@ -765,7 +812,7 @@ services:
         EXISTING_CLIENTS=$(api_get 8989 "$SONARR_KEY" /api/v3/downloadclient)
         if ! echo "$EXISTING_CLIENTS" | grep -q '"QBittorrent"'; then
           api_post 8989 "$SONARR_KEY" /api/v3/downloadclient \
-            "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"fields\":[{\"name\":\"host\",\"value\":\"localhost\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"username\",\"value\":\"admin\"},{\"name\":\"password\",\"value\":\"adminadmin\"},{\"name\":\"tvCategory\",\"value\":\"sonarr\"},{\"name\":\"recentTvPriority\",\"value\":0},{\"name\":\"olderTvPriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}" > /dev/null
+            "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"fields\":[{\"name\":\"host\",\"value\":\"localhost\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"username\",\"value\":\"$SERVICES_USERNAME\"},{\"name\":\"password\",\"value\":\"$SERVICES_PASSWORD\"},{\"name\":\"tvCategory\",\"value\":\"sonarr\"},{\"name\":\"recentTvPriority\",\"value\":0},{\"name\":\"olderTvPriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}" > /dev/null
           echo "[mediarr-configurator] Sonarr: qBittorrent download client added."
         else
           echo "[mediarr-configurator] Sonarr: qBittorrent already configured."
@@ -815,11 +862,43 @@ services:
           echo "[mediarr-configurator] Prowlarr: Sonarr already configured."
         fi
 
-        # ── Phase 8: Mark as configured ────────────────────────────────────────
+        # ── Phase 8: Enable authentication on all *arr services ───────────────
+        echo "[mediarr-configurator] Configuring authentication for all *arr services..."
+
+        set_arr_auth() {
+          local port="$1" key="$2" api_ver="$3" label="$4"
+          local url="http://localhost:${port}/api/${api_ver}/config/host"
+          local current
+          current=$(curl -sf -H "X-Api-Key: $key" "$url") || {
+            echo "[mediarr-configurator] $label: could not fetch host config, skipping auth."
+            return
+          }
+          local updated
+          updated=$(echo "$current" | jq \
+            --arg u "$SERVICES_USERNAME" \
+            --arg p "$SERVICES_PASSWORD" \
+            '.authenticationMethod = "forms" | .authenticationRequired = "enabled" | .username = $u | .password = $p')
+          curl -sf -X PUT -H "X-Api-Key: $key" -H "Content-Type: application/json" \
+            -d "$updated" "$url" > /dev/null
+          echo "[mediarr-configurator] $label: authentication enabled (user: $SERVICES_USERNAME)."
+        }
+
+        set_arr_auth 7878 "$RADARR_KEY"   "v3" "Radarr"
+        set_arr_auth 8989 "$SONARR_KEY"   "v3" "Sonarr"
+        set_arr_auth 9696 "$PROWLARR_KEY" "v1" "Prowlarr"
+
+        # ── Phase 9: Mark as configured ────────────────────────────────────────
         touch /state/configured
         echo "[mediarr-configurator] Auto-configuration complete. All services wired."
         exit 0
-      '
+    x-casaos:
+      envs:
+        - container: SERVICES_USERNAME
+          description:
+            en_us: "Login username for qBittorrent, Radarr, Sonarr, and Prowlarr (default: admin)"
+        - container: SERVICES_PASSWORD
+          description:
+            en_us: "Login password for all services. Leave empty for no password, or set a strong one."
 
 # ─── Networks ─────────────────────────────────────────────────────────────────
 
@@ -906,14 +985,14 @@ x-casaos:
         | Radarr | `:7878` |
         | Sonarr | `:8989` |
         | Prowlarr | `:9696` |
-        | qBittorrent | `:8080` (default: admin / adminadmin) |
+        | qBittorrent | `:8080` (default: admin / _your SERVICES_PASSWORD_) |
 
         ## After Installation
 
-        1. **Wait ~2 minutes** for the auto-configurator to wire all services together
-        2. **Add indexers** in Prowlarr (`:9696`) — tag Cloudflare-protected ones with `flaresolverr`
-        3. **Set up Jellyfin** (`:8096`) — add `/data/movies` and `/data/tv` as libraries
-        4. **Set up Jellyseerr** (`:5055`) — use `http://[YOUR-CASAOS-IP]:8096` as the Jellyfin URL
-        5. **Change qBittorrent password** at `:8080` → Tools → Options → Web UI
+        1. **Set credentials** — fill in `SERVICES_USERNAME` and `SERVICES_PASSWORD` before starting
+        2. **Wait ~2 minutes** for the auto-configurator to wire all services together
+        3. **Add indexers** in Prowlarr (`:9696`) — tag Cloudflare-protected ones with `flaresolverr`
+        4. **Set up Jellyfin** (`:8096`) — add `/data/movies` and `/data/tv` as libraries
+        5. **Set up Jellyseerr** (`:5055`) — use `http://[YOUR-CASAOS-IP]:8096` as the Jellyfin URL
 
         ⚠️ If `VPN_PORT_FORWARDING=on` but your provider doesn't support it, set it to `off`.
