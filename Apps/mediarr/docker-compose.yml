@@ -1,0 +1,931 @@
+name: mediarr
+
+# ─── Reusable anchors ────────────────────────────────────────────────────────
+
+x-vpn-service: &vpn-service
+  depends_on:
+    vpn:
+      condition: service_healthy
+  network_mode: service:vpn
+  restart: unless-stopped
+
+x-common-env: &common-env
+  PUID: $PUID
+  PGID: $PGID
+  TZ: $TZ
+
+# ─── Services ────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Mediarr Hub — Landing page / dashboard for all services ─────────────────
+  #
+  # A lightweight nginx page that serves as the homescreen entry point.
+  # Links to all Mediarr services and shows live status indicators.
+  # The HTML is written inline so no external files are needed.
+  hub:
+    image: nginx:alpine
+    container_name: mediarr-hub
+    network_mode: bridge
+    ports:
+      - target: 80
+        published: "8888"
+        protocol: tcp
+    deploy:
+      resources:
+        reservations:
+          memory: 16M
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -c
+      - |
+          cat > /usr/share/nginx/html/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Mediarr</title>
+            <style>
+              *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: #0d1117;
+                color: #e6edf3;
+                min-height: 100vh;
+                padding: 2.5rem 1.5rem;
+              }
+              header {
+                text-align: center;
+                margin-bottom: 2.5rem;
+              }
+              .logo {
+                font-size: 2.75rem;
+                font-weight: 800;
+                letter-spacing: -0.03em;
+                background: linear-gradient(135deg, #a29bfe 0%, #6c5ce7 50%, #fd79a8 100%);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+                margin-bottom: 0.4rem;
+              }
+              .subtitle {
+                color: #6e7681;
+                font-size: 0.9rem;
+              }
+              .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+                gap: 1rem;
+                max-width: 1100px;
+                margin: 0 auto;
+              }
+              .card {
+                background: #161b22;
+                border: 1px solid #21262d;
+                border-radius: 12px;
+                padding: 1.25rem 1.5rem;
+                text-decoration: none;
+                color: inherit;
+                display: flex;
+                flex-direction: column;
+                gap: 0.6rem;
+                transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+              }
+              .card:hover {
+                border-color: #6c5ce7;
+                transform: translateY(-2px);
+                box-shadow: 0 8px 32px rgba(108, 92, 231, 0.18);
+              }
+              .card-top {
+                display: flex;
+                align-items: center;
+                gap: 0.85rem;
+              }
+              .icon-wrap {
+                width: 46px;
+                height: 46px;
+                border-radius: 10px;
+                background: #21262d;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.5rem;
+                flex-shrink: 0;
+              }
+              .card-name {
+                flex: 1;
+              }
+              .card-name h3 {
+                font-size: 1rem;
+                font-weight: 600;
+                line-height: 1.3;
+              }
+              .card-port {
+                font-size: 0.7rem;
+                color: #6e7681;
+                font-family: 'SF Mono', 'Fira Code', monospace;
+                margin-top: 1px;
+              }
+              .dot {
+                width: 9px;
+                height: 9px;
+                border-radius: 50%;
+                background: #21262d;
+                flex-shrink: 0;
+                transition: background 0.4s, box-shadow 0.4s;
+              }
+              .dot.up   { background: #3fb950; box-shadow: 0 0 7px rgba(63,185,80,0.6); }
+              .dot.down { background: #f85149; }
+              .card-desc {
+                font-size: 0.8rem;
+                color: #6e7681;
+                line-height: 1.55;
+              }
+              .badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                font-size: 0.65rem;
+                font-weight: 500;
+                color: #a29bfe;
+                background: rgba(108, 92, 231, 0.12);
+                border: 1px solid rgba(108, 92, 231, 0.25);
+                border-radius: 4px;
+                padding: 2px 7px;
+                width: fit-content;
+              }
+              footer {
+                text-align: center;
+                margin-top: 2.5rem;
+                color: #30363d;
+                font-size: 0.75rem;
+              }
+            </style>
+          </head>
+          <body>
+            <header>
+              <div class="logo">Mediarr</div>
+              <p class="subtitle">VPN-protected home media stack</p>
+            </header>
+
+            <div class="grid" id="grid"></div>
+
+            <footer>All torrent traffic is routed through your VPN &bull; Status auto-refreshes every 30s</footer>
+
+            <script>
+              const host = window.location.hostname;
+
+              const services = [
+                {
+                  id: 'jellyfin',
+                  name: 'Jellyfin',
+                  icon: '🎬',
+                  port: 8096,
+                  desc: 'Stream your movies and TV shows to any device',
+                  vpn: false
+                },
+                {
+                  id: 'jellyseerr',
+                  name: 'Jellyseerr',
+                  icon: '🔍',
+                  port: 5055,
+                  desc: 'Browse and request new movies and TV shows',
+                  vpn: true
+                },
+                {
+                  id: 'radarr',
+                  name: 'Radarr',
+                  icon: '🎥',
+                  port: 7878,
+                  desc: 'Automatic movie collection manager',
+                  vpn: true
+                },
+                {
+                  id: 'sonarr',
+                  name: 'Sonarr',
+                  icon: '📺',
+                  port: 8989,
+                  desc: 'Automatic TV show collection manager',
+                  vpn: true
+                },
+                {
+                  id: 'prowlarr',
+                  name: 'Prowlarr',
+                  icon: '📡',
+                  port: 9696,
+                  desc: 'Indexer manager — syncs trackers across all apps',
+                  vpn: true
+                },
+                {
+                  id: 'qbittorrent',
+                  name: 'qBittorrent',
+                  icon: '⬇️',
+                  port: 8080,
+                  desc: 'BitTorrent client with web interface',
+                  vpn: true
+                }
+              ];
+
+              const grid = document.getElementById('grid');
+
+              services.forEach(function(s) {
+                const url = 'http://' + host + ':' + s.port;
+                const card = document.createElement('a');
+                card.href = url;
+                card.target = '_blank';
+                card.rel = 'noopener noreferrer';
+                card.className = 'card';
+                card.innerHTML =
+                  '<div class="card-top">' +
+                    '<div class="icon-wrap">' + s.icon + '</div>' +
+                    '<div class="card-name">' +
+                      '<h3>' + s.name + '</h3>' +
+                      '<div class="card-port">:' + s.port + '</div>' +
+                    '</div>' +
+                    '<div class="dot" id="dot-' + s.id + '"></div>' +
+                  '</div>' +
+                  '<div class="card-desc">' + s.desc + '</div>' +
+                  (s.vpn ? '<span class="badge">🔒 VPN</span>' : '');
+                grid.appendChild(card);
+              });
+
+              function checkAll() {
+                services.forEach(function(s) {
+                  const dot = document.getElementById('dot-' + s.id);
+                  const url = 'http://' + host + ':' + s.port;
+                  const ctrl = new AbortController();
+                  const timer = setTimeout(function() { ctrl.abort(); }, 4000);
+                  fetch(url, { mode: 'no-cors', signal: ctrl.signal })
+                    .then(function() {
+                      clearTimeout(timer);
+                      dot.className = 'dot up';
+                    })
+                    .catch(function() {
+                      dot.className = 'dot down';
+                    });
+                });
+              }
+
+              checkAll();
+              setInterval(checkAll, 30000);
+            </script>
+          </body>
+          </html>
+          HTMLEOF
+          exec nginx -g 'daemon off;'
+    x-casaos:
+      ports:
+        - container: "80"
+          description:
+            en_us: Mediarr Hub dashboard
+
+  # ── VPN Gateway ─────────────────────────────────────────────────────────────
+  vpn:
+    image: qmcgaw/gluetun:latest
+    container_name: mediarr-vpn
+    cap_add:
+      - NET_ADMIN
+    networks:
+      mediarr_net:
+        ipv4_address: 172.20.0.8
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/gluetun
+        target: /tmp/gluetun
+    environment:
+      # VPN provider — supports all Gluetun providers (protonvpn, mullvad, nordvpn, etc.)
+      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER:-protonvpn}
+      # VPN protocol — openvpn or wireguard
+      VPN_TYPE: ${VPN_TYPE:-openvpn}
+      # OpenVPN credentials (used when VPN_TYPE=openvpn)
+      OPENVPN_USER: ${OPENVPN_USER:-}
+      OPENVPN_PASSWORD: ${OPENVPN_PASSWORD:-}
+      # WireGuard credentials (used when VPN_TYPE=wireguard)
+      WIREGUARD_PRIVATE_KEY: ${WIREGUARD_PRIVATE_KEY:-}
+      WIREGUARD_ADDRESS: ${WIREGUARD_ADDRESS:-}
+      # Server preference
+      SERVER_COUNTRIES: ${SERVER_COUNTRIES:-Netherlands}
+      # Port forwarding (set to off if your VPN provider doesn't support it)
+      VPN_PORT_FORWARDING: ${VPN_PORT_FORWARDING:-on}
+      # When a forwarded port is obtained, update qBittorrent's listening port automatically
+      VPN_PORT_FORWARDING_UP_COMMAND: >-
+        /bin/sh -c
+        'wget -q -O- --post-data "json={\"listen_port\":{{PORT}}}"
+        "http://localhost:8080/api/v2/app/setPreferences" 2>/dev/null; true'
+      LOG_LEVEL: ${GLUETUN_LOG_LEVEL:-warning}
+    ports:
+      # qBittorrent WebUI
+      - target: 8080
+        published: "8080"
+        protocol: tcp
+      # qBittorrent torrent port (for seeding/leeching)
+      - target: 6881
+        published: "6881"
+        protocol: tcp
+      - target: 6881
+        published: "6881"
+        protocol: udp
+      # Prowlarr
+      - target: 9696
+        published: "9696"
+        protocol: tcp
+      # Radarr
+      - target: 7878
+        published: "7878"
+        protocol: tcp
+      # Sonarr
+      - target: 8989
+        published: "8989"
+        protocol: tcp
+      # Jellyseerr
+      - target: 5055
+        published: "5055"
+        protocol: tcp
+      # FlareSolverr (exposed for debugging; normally only used internally by Prowlarr)
+      - target: 8191
+        published: "8191"
+        protocol: tcp
+    restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: VPN_SERVICE_PROVIDER
+          description:
+            en_us: "VPN provider name (e.g. protonvpn, mullvad, nordvpn). See Gluetun docs for full list."
+        - container: VPN_TYPE
+          description:
+            en_us: "VPN protocol: openvpn or wireguard"
+        - container: OPENVPN_USER
+          description:
+            en_us: "OpenVPN username (required when VPN_TYPE=openvpn). For ProtonVPN, append +pmp to username."
+        - container: OPENVPN_PASSWORD
+          description:
+            en_us: "OpenVPN password (required when VPN_TYPE=openvpn)"
+        - container: WIREGUARD_PRIVATE_KEY
+          description:
+            en_us: "WireGuard private key (required when VPN_TYPE=wireguard)"
+        - container: WIREGUARD_ADDRESS
+          description:
+            en_us: "WireGuard interface address e.g. 10.64.0.1/32 (required when VPN_TYPE=wireguard)"
+        - container: SERVER_COUNTRIES
+          description:
+            en_us: "Preferred VPN server country (e.g. Netherlands, Switzerland)"
+        - container: VPN_PORT_FORWARDING
+          description:
+            en_us: "Enable VPN port forwarding for better torrent performance (on/off). Not all providers support this."
+      ports:
+        - container: "8080"
+          description:
+            en_us: qBittorrent WebUI
+        - container: "9696"
+          description:
+            en_us: Prowlarr WebUI
+        - container: "7878"
+          description:
+            en_us: Radarr WebUI
+        - container: "8989"
+          description:
+            en_us: Sonarr WebUI
+        - container: "5055"
+          description:
+            en_us: Jellyseerr WebUI
+        - container: "8191"
+          description:
+            en_us: FlareSolverr (internal Cloudflare bypass proxy)
+        - container: "6881"
+          description:
+            en_us: qBittorrent torrent port (TCP)
+        - container: "6881"
+          description:
+            en_us: qBittorrent torrent port (UDP)
+          protocol: udp
+      volumes:
+        - container: /tmp/gluetun
+          description:
+            en_us: Gluetun VPN state and certificates
+
+  # ── Prowlarr — Indexer Manager ───────────────────────────────────────────────
+  prowlarr:
+    image: linuxserver/prowlarr:1.37.0
+    container_name: mediarr-prowlarr
+    environment:
+      <<: *common-env
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/prowlarr
+        target: /config
+    <<: *vpn-service
+    x-casaos:
+      volumes:
+        - container: /config
+          description:
+            en_us: Prowlarr configuration and database
+
+  # ── Radarr — Movie Manager ───────────────────────────────────────────────────
+  radarr:
+    image: lscr.io/linuxserver/radarr:5.26.2
+    container_name: mediarr-radarr
+    environment:
+      <<: *common-env
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/radarr
+        target: /config
+      - type: bind
+        source: /DATA/Media/Movies
+        target: /data/movies
+      - type: bind
+        source: /DATA/Downloads
+        target: /downloads
+    <<: *vpn-service
+    x-casaos:
+      volumes:
+        - container: /config
+          description:
+            en_us: Radarr configuration and database
+        - container: /data/movies
+          description:
+            en_us: Movie library directory (shared with Jellyfin)
+        - container: /downloads
+          description:
+            en_us: Download directory (shared with qBittorrent)
+
+  # ── Sonarr — TV Show Manager ─────────────────────────────────────────────────
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:4.0.15
+    container_name: mediarr-sonarr
+    environment:
+      <<: *common-env
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/sonarr
+        target: /config
+      - type: bind
+        source: /DATA/Media/TV Shows
+        target: /data/tv
+      - type: bind
+        source: /DATA/Downloads
+        target: /downloads
+    <<: *vpn-service
+    x-casaos:
+      volumes:
+        - container: /config
+          description:
+            en_us: Sonarr configuration and database
+        - container: /data/tv
+          description:
+            en_us: TV show library directory (shared with Jellyfin)
+        - container: /downloads
+          description:
+            en_us: Download directory (shared with qBittorrent)
+
+  # ── qBittorrent — Torrent Client ─────────────────────────────────────────────
+  qbittorrent:
+    image: linuxserver/qbittorrent:4.6.7
+    container_name: mediarr-qbittorrent
+    environment:
+      <<: *common-env
+      WEBUI_PORT: "8080"
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/qbittorrent
+        target: /config
+      - type: bind
+        source: /DATA/Downloads
+        target: /downloads
+    <<: *vpn-service
+    x-casaos:
+      envs:
+        - container: WEBUI_PORT
+          description:
+            en_us: qBittorrent Web UI port (do not change)
+      volumes:
+        - container: /config
+          description:
+            en_us: qBittorrent configuration
+        - container: /downloads
+          description:
+            en_us: Download directory
+
+  # ── FlareSolverr — Cloudflare Bypass ────────────────────────────────────────
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.4.5
+    container_name: mediarr-flaresolverr
+    environment:
+      TZ: $TZ
+      LOG_LEVEL: ${FLARESOLVERR_LOG_LEVEL:-info}
+      LOG_HTML: "false"
+      CAPTCHA_SOLVER: "none"
+    <<: *vpn-service
+    x-casaos:
+      envs:
+        - container: LOG_LEVEL
+          description:
+            en_us: FlareSolverr log verbosity (info, debug, warning)
+
+  # ── Jellyfin — Media Server ──────────────────────────────────────────────────
+  jellyfin:
+    image: linuxserver/jellyfin:10.10.7
+    container_name: mediarr-jellyfin
+    environment:
+      <<: *common-env
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/jellyfin
+        target: /config
+      - type: bind
+        source: /DATA/Media/Movies
+        target: /data/movies
+      - type: bind
+        source: /DATA/Media/TV Shows
+        target: /data/tv
+    # Optional: uncomment for hardware-accelerated transcoding
+    # devices:
+    #   - /dev/dri:/dev/dri
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
+    network_mode: bridge
+    ports:
+      - target: 8096
+        published: "8096"
+        protocol: tcp
+      # Jellyfin auto-discovery (optional, for LAN clients)
+      - target: 7359
+        published: "7359"
+        protocol: udp
+    restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: PUID
+          description:
+            en_us: Run Jellyfin as specified user ID
+        - container: PGID
+          description:
+            en_us: Run Jellyfin as specified group ID
+        - container: TZ
+          description:
+            en_us: Timezone
+      ports:
+        - container: "8096"
+          description:
+            en_us: Jellyfin Web UI (HTTP)
+        - container: "7359"
+          description:
+            en_us: Jellyfin auto-discovery (LAN)
+          protocol: udp
+      volumes:
+        - container: /config
+          description:
+            en_us: Jellyfin configuration, metadata cache, and database
+        - container: /data/movies
+          description:
+            en_us: Movie library (shared with Radarr)
+        - container: /data/tv
+          description:
+            en_us: TV show library (shared with Sonarr)
+
+  # ── Jellyseerr — Media Request Manager ──────────────────────────────────────
+  jellyseerr:
+    image: fallenbagel/jellyseerr:2.7.3
+    container_name: mediarr-jellyseerr
+    environment:
+      TZ: $TZ
+      PORT: "5055"
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/jellyseerr
+        target: /app/config
+    <<: *vpn-service
+    x-casaos:
+      envs:
+        - container: TZ
+          description:
+            en_us: Timezone
+      volumes:
+        - container: /app/config
+          description:
+            en_us: Jellyseerr configuration and database
+
+  # ── Mediarr Configurator — Auto-wires all services on first install ──────────
+  #
+  # This init container runs once after all *arr services start.
+  # It reads API keys from config files and calls each service's REST API to:
+  #   - Set up qBittorrent auth bypass for localhost
+  #   - Add qBittorrent as download client in Radarr and Sonarr
+  #   - Set movie/TV root folders in Radarr and Sonarr
+  #   - Add FlareSolverr proxy in Prowlarr
+  #   - Register Radarr and Sonarr as apps in Prowlarr
+  #
+  # After first successful run, /state/configured is created and future
+  # starts are instant no-ops.
+  configurator:
+    image: alpine:3.19
+    container_name: mediarr-configurator
+    depends_on:
+      vpn:
+        condition: service_healthy
+      radarr:
+        condition: service_started
+      sonarr:
+        condition: service_started
+      prowlarr:
+        condition: service_started
+      qbittorrent:
+        condition: service_started
+    network_mode: service:vpn
+    restart: on-failure
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/radarr
+        target: /radarr-config
+        read_only: true
+      - type: bind
+        source: /DATA/AppData/$AppID/sonarr
+        target: /sonarr-config
+        read_only: true
+      - type: bind
+        source: /DATA/AppData/$AppID/prowlarr
+        target: /prowlarr-config
+        read_only: true
+      - type: bind
+        source: /DATA/AppData/$AppID/qbittorrent
+        target: /qbittorrent-config
+      - type: bind
+        source: /DATA/AppData/$AppID/configurator
+        target: /state
+    command: |
+      /bin/sh -c '
+        set -e
+
+        # ── Guard: skip if already configured ─────────────────────────────────
+        if [ -f /state/configured ]; then
+          echo "[mediarr-configurator] Already configured, exiting."
+          exit 0
+        fi
+
+        echo "[mediarr-configurator] Starting auto-configuration..."
+        apk add --no-cache curl > /dev/null 2>&1
+
+        # ── Helper functions ───────────────────────────────────────────────────
+
+        wait_for_file() {
+          local path="$1" label="$2" max=120 n=0
+          echo "[mediarr-configurator] Waiting for $label..."
+          while [ $n -lt $max ]; do
+            [ -f "$path" ] && grep -q "<ApiKey>" "$path" 2>/dev/null && return 0
+            sleep 2; n=$((n+2))
+          done
+          echo "[mediarr-configurator] Timeout waiting for $label" >&2
+          exit 1
+        }
+
+        wait_for_api() {
+          local url="$1" label="$2" max=120 n=0
+          echo "[mediarr-configurator] Waiting for $label API..."
+          while [ $n -lt $max ]; do
+            curl -sf "$url" > /dev/null 2>&1 && return 0
+            sleep 3; n=$((n+3))
+          done
+          echo "[mediarr-configurator] Timeout waiting for $label API" >&2
+          exit 1
+        }
+
+        extract_api_key() {
+          grep -oP "(?<=<ApiKey>)[^<]+" "$1"
+        }
+
+        api_get() {
+          curl -sf -H "X-Api-Key: $2" "http://localhost:$1$3"
+        }
+
+        api_post() {
+          curl -sf -X POST -H "X-Api-Key: $2" -H "Content-Type: application/json" \
+            -d "$4" "http://localhost:$1$3"
+        }
+
+        # ── Phase 2: Configure qBittorrent ────────────────────────────────────
+        QB_CONF="/qbittorrent-config/qBittorrent/config/qBittorrent.conf"
+        echo "[mediarr-configurator] Waiting for qBittorrent config..."
+        n=0; while [ $n -lt 120 ]; do
+          [ -f "$QB_CONF" ] && break
+          sleep 2; n=$((n+2))
+        done
+
+        if [ -f "$QB_CONF" ]; then
+          # Inject adminadmin password hash if not yet set
+          if ! grep -q "^WebUI.Password_PBKDF2" "$QB_CONF"; then
+            echo "[mediarr-configurator] Setting qBittorrent default password (adminadmin)..."
+            sed -i "/^\[Preferences\]/a WebUI\\\\Password_PBKDF2=\"@ByteArray(gTzqQHUv3A1X43tLaAhaJQ==:ZBCIBA4honNZ7H66xdEoHpqBC/Vvwj17ZCjQKARSK78ScJWDMdWSfxezHG536UekAL/zpRn571MXCfhtdqiArA==)\"" "$QB_CONF" || true
+          fi
+          # Allow API access from localhost without auth (enables VPN port forwarding command)
+          if ! grep -q "^WebUI.AuthSubnetWhitelistEnabled=true" "$QB_CONF"; then
+            echo "[mediarr-configurator] Enabling qBittorrent subnet whitelist..."
+            sed -i "/^\[Preferences\]/a WebUI\\\\AuthSubnetWhitelistEnabled=true" "$QB_CONF" || true
+            sed -i "/^\[Preferences\]/a WebUI\\\\AuthSubnetWhitelist=127.0.0.0/8" "$QB_CONF" || true
+          fi
+        else
+          echo "[mediarr-configurator] qBittorrent config not found yet, will retry on next run."
+          exit 1
+        fi
+
+        # ── Phase 3: Wait for *arr API keys ───────────────────────────────────
+        wait_for_file /radarr-config/config.xml "Radarr config"
+        wait_for_file /sonarr-config/config.xml "Sonarr config"
+        wait_for_file /prowlarr-config/config.xml "Prowlarr config"
+
+        RADARR_KEY=$(extract_api_key /radarr-config/config.xml)
+        SONARR_KEY=$(extract_api_key /sonarr-config/config.xml)
+        PROWLARR_KEY=$(extract_api_key /prowlarr-config/config.xml)
+
+        echo "[mediarr-configurator] API keys extracted successfully."
+
+        # ── Phase 4: Wait for *arr APIs ───────────────────────────────────────
+        wait_for_api "http://localhost:7878/api/v3/system/status?apikey=$RADARR_KEY" "Radarr"
+        wait_for_api "http://localhost:8989/api/v3/system/status?apikey=$SONARR_KEY" "Sonarr"
+        wait_for_api "http://localhost:9696/api/v1/system/status?apikey=$PROWLARR_KEY" "Prowlarr"
+
+        echo "[mediarr-configurator] All APIs reachable."
+
+        # ── Phase 5: Configure Radarr ──────────────────────────────────────────
+        echo "[mediarr-configurator] Configuring Radarr..."
+
+        EXISTING_CLIENTS=$(api_get 7878 "$RADARR_KEY" /api/v3/downloadclient)
+        if ! echo "$EXISTING_CLIENTS" | grep -q '"QBittorrent"'; then
+          api_post 7878 "$RADARR_KEY" /api/v3/downloadclient \
+            "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"fields\":[{\"name\":\"host\",\"value\":\"localhost\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"username\",\"value\":\"admin\"},{\"name\":\"password\",\"value\":\"adminadmin\"},{\"name\":\"movieCategory\",\"value\":\"radarr\"},{\"name\":\"recentMoviePriority\",\"value\":0},{\"name\":\"olderMoviePriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}" > /dev/null
+          echo "[mediarr-configurator] Radarr: qBittorrent download client added."
+        else
+          echo "[mediarr-configurator] Radarr: qBittorrent already configured."
+        fi
+
+        EXISTING_FOLDERS=$(api_get 7878 "$RADARR_KEY" /api/v3/rootfolder)
+        if ! echo "$EXISTING_FOLDERS" | grep -q '"/data/movies"'; then
+          api_post 7878 "$RADARR_KEY" /api/v3/rootfolder \
+            "{\"path\":\"/data/movies\"}" > /dev/null
+          echo "[mediarr-configurator] Radarr: /data/movies root folder added."
+        fi
+
+        # ── Phase 6: Configure Sonarr ──────────────────────────────────────────
+        echo "[mediarr-configurator] Configuring Sonarr..."
+
+        EXISTING_CLIENTS=$(api_get 8989 "$SONARR_KEY" /api/v3/downloadclient)
+        if ! echo "$EXISTING_CLIENTS" | grep -q '"QBittorrent"'; then
+          api_post 8989 "$SONARR_KEY" /api/v3/downloadclient \
+            "{\"name\":\"qBittorrent\",\"enable\":true,\"protocol\":\"torrent\",\"priority\":1,\"implementation\":\"QBittorrent\",\"configContract\":\"QBittorrentSettings\",\"fields\":[{\"name\":\"host\",\"value\":\"localhost\"},{\"name\":\"port\",\"value\":8080},{\"name\":\"username\",\"value\":\"admin\"},{\"name\":\"password\",\"value\":\"adminadmin\"},{\"name\":\"tvCategory\",\"value\":\"sonarr\"},{\"name\":\"recentTvPriority\",\"value\":0},{\"name\":\"olderTvPriority\",\"value\":0},{\"name\":\"initialState\",\"value\":0}]}" > /dev/null
+          echo "[mediarr-configurator] Sonarr: qBittorrent download client added."
+        else
+          echo "[mediarr-configurator] Sonarr: qBittorrent already configured."
+        fi
+
+        EXISTING_FOLDERS=$(api_get 8989 "$SONARR_KEY" /api/v3/rootfolder)
+        if ! echo "$EXISTING_FOLDERS" | grep -q '"/data/tv"'; then
+          api_post 8989 "$SONARR_KEY" /api/v3/rootfolder \
+            "{\"path\":\"/data/tv\"}" > /dev/null
+          echo "[mediarr-configurator] Sonarr: /data/tv root folder added."
+        fi
+
+        # ── Phase 7: Configure Prowlarr ────────────────────────────────────────
+        echo "[mediarr-configurator] Configuring Prowlarr..."
+
+        EXISTING_TAGS=$(api_get 9696 "$PROWLARR_KEY" /api/v1/tag)
+        if ! echo "$EXISTING_TAGS" | grep -q '"flaresolverr"'; then
+          TAG_RESP=$(api_post 9696 "$PROWLARR_KEY" /api/v1/tag "{\"label\":\"flaresolverr\"}")
+          FLARE_TAG_ID=$(echo "$TAG_RESP" | grep -oP '"id":\K[0-9]+' | head -1)
+        else
+          FLARE_TAG_ID=$(echo "$EXISTING_TAGS" | grep -B1 '"flaresolverr"' | grep -oP '"id":\K[0-9]+' | head -1)
+        fi
+
+        EXISTING_PROXIES=$(api_get 9696 "$PROWLARR_KEY" /api/v1/indexerProxy)
+        if ! echo "$EXISTING_PROXIES" | grep -q '"FlareSolverr"'; then
+          api_post 9696 "$PROWLARR_KEY" /api/v1/indexerProxy \
+            "{\"name\":\"FlareSolverr\",\"implementation\":\"FlareSolverr\",\"configContract\":\"FlareSolverrSettings\",\"tags\":[${FLARE_TAG_ID:-1}],\"fields\":[{\"name\":\"host\",\"value\":\"http://localhost:8191\"},{\"name\":\"requestTimeout\",\"value\":60}]}" > /dev/null
+          echo "[mediarr-configurator] Prowlarr: FlareSolverr proxy added."
+        else
+          echo "[mediarr-configurator] Prowlarr: FlareSolverr already configured."
+        fi
+
+        EXISTING_APPS=$(api_get 9696 "$PROWLARR_KEY" /api/v1/applications)
+        if ! echo "$EXISTING_APPS" | grep -q '"Radarr"'; then
+          api_post 9696 "$PROWLARR_KEY" /api/v1/applications \
+            "{\"name\":\"Radarr\",\"syncLevel\":\"fullSync\",\"implementation\":\"Radarr\",\"configContract\":\"RadarrSettings\",\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://localhost:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://localhost:7878\"},{\"name\":\"apiKey\",\"value\":\"$RADARR_KEY\"},{\"name\":\"syncCategories\",\"value\":[2000,2010,2020,2030,2040,2045,2050,2060,2070,2080]}]}" > /dev/null
+          echo "[mediarr-configurator] Prowlarr: Radarr application added."
+        else
+          echo "[mediarr-configurator] Prowlarr: Radarr already configured."
+        fi
+
+        if ! echo "$EXISTING_APPS" | grep -q '"Sonarr"'; then
+          api_post 9696 "$PROWLARR_KEY" /api/v1/applications \
+            "{\"name\":\"Sonarr\",\"syncLevel\":\"fullSync\",\"implementation\":\"Sonarr\",\"configContract\":\"SonarrSettings\",\"fields\":[{\"name\":\"prowlarrUrl\",\"value\":\"http://localhost:9696\"},{\"name\":\"baseUrl\",\"value\":\"http://localhost:8989\"},{\"name\":\"apiKey\",\"value\":\"$SONARR_KEY\"},{\"name\":\"syncCategories\",\"value\":[5000,5010,5020,5030,5040,5045,5050,5060,5070,5080]}]}" > /dev/null
+          echo "[mediarr-configurator] Prowlarr: Sonarr application added."
+        else
+          echo "[mediarr-configurator] Prowlarr: Sonarr already configured."
+        fi
+
+        # ── Phase 8: Mark as configured ────────────────────────────────────────
+        touch /state/configured
+        echo "[mediarr-configurator] Auto-configuration complete. All services wired."
+        exit 0
+      '
+
+# ─── Networks ─────────────────────────────────────────────────────────────────
+
+networks:
+  mediarr_net:
+    name: mediarr_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ─── CasaOS App Metadata ─────────────────────────────────────────────────────
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: hub
+  store_app_id: mediarr
+  author: vantezzen
+  category: Media
+  description:
+    en_us: |
+      Mediarr is a complete, zero-configuration home media stack — all bundled into a single install.
+
+      It includes everything you need to find, download, organize, and watch your movies and TV shows:
+
+      • **Radarr** — Automatically monitors RSS feeds and downloads movies in your preferred quality
+      • **Sonarr** — Same as Radarr but for TV shows, managing entire seasons automatically
+      • **Prowlarr** — Central indexer manager that syncs your trackers to both Radarr and Sonarr
+      • **qBittorrent** — Fast, lightweight BitTorrent client with a clean web interface
+      • **FlareSolverr** — Automatically bypasses Cloudflare-protected torrent indexers
+      • **Jellyfin** — Beautiful, open-source media server to stream your library to any device
+      • **Jellyseerr** — Friendly interface for requesting new movies and shows
+
+      All traffic is routed through your VPN via Gluetun, supporting ProtonVPN, Mullvad, NordVPN, and any other Gluetun-compatible provider.
+
+      After installation, Mediarr's built-in configurator automatically wires all services together — no manual setup of download clients, root folders, or app connections required.
+
+      Open the Mediarr Hub (the app's main page) to navigate to all individual services.
+  developer: vantezzen
+  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/icon.png
+  screenshot_link:
+    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-1.png
+    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-2.png
+    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/screenshot-3.png
+  thumbnail: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/Jellyfin/thumbnail.png
+  tagline:
+    en_us: Complete VPN-protected home media stack
+  title:
+    en_us: Mediarr
+  index: /
+  port_map: "8888"
+  tips:
+    before_install:
+      en_us: |
+        ## Required: VPN Credentials
+
+        Set your VPN credentials in the environment variables before starting Mediarr.
+        Gluetun supports all major VPN providers. See the [Gluetun provider docs](https://github.com/qdm12/gluetun-wiki/tree/main/setup/providers) for the exact variables your provider needs.
+
+        **ProtonVPN (OpenVPN) example:**
+        | Variable | Value |
+        |---|---|
+        | `VPN_SERVICE_PROVIDER` | `protonvpn` |
+        | `VPN_TYPE` | `openvpn` |
+        | `OPENVPN_USER` | Your username **+ `+pmp`** (e.g. `user+pmp`) |
+        | `OPENVPN_PASSWORD` | Your password |
+
+        **Mullvad (WireGuard) example:**
+        | Variable | Value |
+        |---|---|
+        | `VPN_SERVICE_PROVIDER` | `mullvad` |
+        | `VPN_TYPE` | `wireguard` |
+        | `WIREGUARD_PRIVATE_KEY` | Your WireGuard private key |
+        | `WIREGUARD_ADDRESS` | e.g. `10.64.0.1/32` |
+
+        ## Services & Ports
+
+        Open the **Mediarr Hub** at `:8888` to access all services from one place.
+
+        | Service | Port |
+        |---|---|
+        | Mediarr Hub | `:8888` |
+        | Jellyfin | `:8096` |
+        | Jellyseerr | `:5055` |
+        | Radarr | `:7878` |
+        | Sonarr | `:8989` |
+        | Prowlarr | `:9696` |
+        | qBittorrent | `:8080` (default: admin / adminadmin) |
+
+        ## After Installation
+
+        1. **Wait ~2 minutes** for the auto-configurator to wire all services together
+        2. **Add indexers** in Prowlarr (`:9696`) — tag Cloudflare-protected ones with `flaresolverr`
+        3. **Set up Jellyfin** (`:8096`) — add `/data/movies` and `/data/tv` as libraries
+        4. **Set up Jellyseerr** (`:5055`) — use `http://[YOUR-CASAOS-IP]:8096` as the Jellyfin URL
+        5. **Change qBittorrent password** at `:8080` → Tools → Options → Web UI
+
+        ⚠️ If `VPN_PORT_FORWARDING=on` but your provider doesn't support it, set it to `off`.
