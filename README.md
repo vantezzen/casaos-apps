@@ -1,4 +1,4 @@
-https://github.com/vantezzen/casaos-apps/archive/refs/heads/master.zip
+https://github.com/vantezzen/casaos-apps/archive/refs/heads/main.zip
 
 ## Required: VPN Credentials
 
