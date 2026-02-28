@@ -81,7 +81,6 @@ if [ ! -f /state/configured ]; then
   wait_for_api "http://localhost:7878/api/v3/system/status?apikey=$RADARR_KEY" "Radarr"
   wait_for_api "http://localhost:8989/api/v3/system/status?apikey=$SONARR_KEY" "Sonarr"
   wait_for_api "http://localhost:9696/api/v1/system/status?apikey=$PROWLARR_KEY" "Prowlarr"
-  wait_for_api "http://localhost:8191" "FlareSolverr"
 
   echo "[mediarr-configurator] All APIs reachable."
 
