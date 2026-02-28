@@ -2,14 +2,11 @@
 # Mediarr auto-configurator
 # Wires all *arr services, qBittorrent, FlareSolverr, and Prowlarr together
 # on first install. Idempotent — safe to re-run.
-#
-# NOTE: no "set -e" — individual API call failures are logged and skipped
-# rather than stopping the whole script.
 
 # ── Guard: skip if already configured ─────────────────────────────────────────
 if [ -f /state/configured ]; then
-  echo "[mediarr-configurator] Already configured, exiting."
-  exit 0
+  echo "[mediarr-configurator] Already configured, sleeping."
+  exec tail -f /dev/null
 fi
 
 echo "[mediarr-configurator] Starting auto-configuration..."
@@ -78,6 +75,7 @@ echo "[mediarr-configurator]   Prowlarr: ${PROWLARR_KEY:+OK (${#PROWLARR_KEY} ch
 wait_for_api "http://localhost:7878/api/v3/system/status?apikey=$RADARR_KEY" "Radarr"
 wait_for_api "http://localhost:8989/api/v3/system/status?apikey=$SONARR_KEY" "Sonarr"
 wait_for_api "http://localhost:9696/api/v1/system/status?apikey=$PROWLARR_KEY" "Prowlarr"
+wait_for_api "http://localhost:8191" "FlareSolverr"
 
 echo "[mediarr-configurator] All APIs reachable."
 
@@ -209,7 +207,7 @@ set_arr_auth() {
   _updated=$(echo "$_current" | jq \
     --arg u "$SERVICES_USERNAME" \
     --arg p "$SERVICES_PASSWORD" \
-    '.authenticationMethod = "forms" | .authenticationRequired = "enabled" | .username = $u | .password = $p')
+    '.authenticationMethod = "forms" | .authenticationRequired = "enabled" | .username = $u | .password = $p | .passwordConfirmation = $p')
   RESP=$(curl -s -X PUT -H "X-Api-Key: $2" -H "Content-Type: application/json" \
     -d "$_updated" "$_url")
   if echo "$RESP" | grep -q '"id"'; then
@@ -223,6 +221,7 @@ set_arr_auth 7878 "$RADARR_KEY"   "v3" "Radarr"
 set_arr_auth 8989 "$SONARR_KEY"   "v3" "Sonarr"
 set_arr_auth 9696 "$PROWLARR_KEY" "v1" "Prowlarr"
 
-# ── Phase 9: Mark as configured ───────────────────────────────────────────────
+# ── Phase 9: Mark as configured and stay alive ────────────────────────────────
 touch /state/configured
 echo "[mediarr-configurator] Auto-configuration complete. All services wired."
+exec tail -f /dev/null
