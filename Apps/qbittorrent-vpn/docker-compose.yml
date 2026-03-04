@@ -1,0 +1,187 @@
+name: qBittorrent (VPN)
+
+x-vpn-service: &vpn-service
+  depends_on:
+    vpn:
+      condition: service_healthy
+  network_mode: service:vpn
+  restart: unless-stopped
+
+x-common-env: &common-env
+  PUID: $PUID
+  PGID: $PGID
+  TZ: $TZ
+
+x-services-auth: &services-auth
+  SERVICES_USERNAME: admin
+  SERVICES_PASSWORD: "mediarr"
+
+# ─── Services ────────────────────────────────────────────────────────────────
+
+services:
+  vpn:
+    image: qmcgaw/gluetun:latest
+    container_name: mediarr-vpn
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - mediarr_net
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/gluetun
+        target: /tmp/gluetun
+    environment:
+      # VPN provider — supports all Gluetun providers (protonvpn, mullvad, nordvpn, etc.)
+      VPN_SERVICE_PROVIDER: protonvpn
+      # VPN protocol — openvpn or wireguard
+      VPN_TYPE: openvpn
+      # OpenVPN credentials (used when VPN_TYPE=openvpn)
+      OPENVPN_USER: ""
+      OPENVPN_PASSWORD: ""
+      # WireGuard credentials (used when VPN_TYPE=wireguard)
+      WIREGUARD_PRIVATE_KEY: ""
+      WIREGUARD_ADDRESS: ""
+      # Server preference
+      SERVER_COUNTRIES: Netherlands
+      # Port forwarding (set to off if your VPN provider doesn't support it)
+      VPN_PORT_FORWARDING: "on"
+      # When a forwarded port is obtained, update qBittorrent's listening port automatically
+      VPN_PORT_FORWARDING_UP_COMMAND: >-
+        /bin/sh -c
+        'wget -q -O- --post-data "json={\"listen_port\":{{PORT}}}"
+        "http://localhost:8080/api/v2/app/setPreferences" 2>/dev/null; true'
+      LOG_LEVEL: debug
+    ports:
+      # qBittorrent WebUI
+      - target: 8080
+        published: "8080"
+        protocol: tcp
+      # qBittorrent torrent port (for seeding/leeching)
+      - target: 6881
+        published: "6881"
+        protocol: tcp
+      - target: 6881
+        published: "6881"
+        protocol: udp
+      # FlareSolverr
+      - target: 8191
+        published: "8191"
+        protocol: tcp
+    restart: unless-stopped
+    x-casaos:
+      envs:
+        - container: VPN_SERVICE_PROVIDER
+          description:
+            en_us: "VPN provider name (e.g. protonvpn, mullvad, nordvpn). See Gluetun docs for full list."
+        - container: VPN_TYPE
+          description:
+            en_us: "VPN protocol: openvpn or wireguard"
+        - container: OPENVPN_USER
+          description:
+            en_us: "OpenVPN username (required when VPN_TYPE=openvpn). For ProtonVPN, append +pmp to username."
+        - container: OPENVPN_PASSWORD
+          description:
+            en_us: "OpenVPN password (required when VPN_TYPE=openvpn)"
+        - container: WIREGUARD_PRIVATE_KEY
+          description:
+            en_us: "WireGuard private key (required when VPN_TYPE=wireguard)"
+        - container: WIREGUARD_ADDRESS
+          description:
+            en_us: "WireGuard interface address e.g. 10.64.0.1/32 (required when VPN_TYPE=wireguard)"
+        - container: SERVER_COUNTRIES
+          description:
+            en_us: "Preferred VPN server country (e.g. Netherlands, Switzerland)"
+        - container: VPN_PORT_FORWARDING
+          description:
+            en_us: "Enable VPN port forwarding for better torrent performance (on/off). Not all providers support this."
+      ports:
+        - container: "8080"
+          description:
+            en_us: qBittorrent WebUI
+        - container: "8191"
+          description:
+            en_us: FlareSolverr
+        - container: "6881"
+          description:
+            en_us: qBittorrent torrent port (TCP)
+        - container: "6881"
+          description:
+            en_us: qBittorrent torrent port (UDP)
+          protocol: udp
+      volumes:
+        - container: /tmp/gluetun
+          description:
+            en_us: Gluetun VPN state and certificates
+
+  qbittorrent:
+    image: linuxserver/qbittorrent:4.6.7
+    environment:
+      <<: *common-env
+      WEBUI_PORT: "8080"
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/qbittorrent
+        target: /config
+      - type: bind
+        source: /DATA/Downloads
+        target: /downloads
+    <<: *vpn-service
+    depends_on:
+      vpn:
+        condition: service_healthy
+    x-casaos:
+      envs:
+        - container: WEBUI_PORT
+          description:
+            en_us: qBittorrent Web UI port (do not change)
+      volumes:
+        - container: /config
+          description:
+            en_us: qBittorrent configuration
+        - container: /downloads
+          description:
+            en_us: Download directory
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:v3.4.5
+    environment:
+      TZ: $TZ
+      LOG_LEVEL: info
+      LOG_HTML: "false"
+      CAPTCHA_SOLVER: "none"
+    <<: *vpn-service
+    x-casaos:
+      envs:
+        - container: LOG_LEVEL
+          description:
+            en_us: FlareSolverr log verbosity (info, debug, warning)
+
+networks:
+  mediarr_net:
+    name: mediarr_net
+    driver: bridge
+
+x-casaos:
+  architectures:
+    - amd64
+    - arm64
+  main: hub
+  store_app_id: qbittorrent-vpn
+  author: vantezzen
+  category: Media
+  description:
+    en_us: |
+      qBittorrent with built-in VPN (powered by Gluetun) and FlareSolverr for bypassing Cloudflare protections.
+  developer: vantezzen
+  icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/qBittorrent/icon.png
+  screenshot_link:
+    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/qBittorrent/screenshot-1.png
+    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/qBittorrent/screenshot-2.png
+    - https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/qBittorrent/screenshot-3.png
+  thumbnail: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/qBittorrent/thumbnail.png
+  tagline:
+    en_us: qBittorrent with built-in VPN
+  title:
+    en_us: qBittorrent (VPN)
+  index: /
+  port_map: 8080
