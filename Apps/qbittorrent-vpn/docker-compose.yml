@@ -1,20 +1,4 @@
-name: qBittorrent (VPN)
-
-x-vpn-service: &vpn-service
-  depends_on:
-    vpn:
-      condition: service_healthy
-  network_mode: service:vpn
-  restart: unless-stopped
-
-x-common-env: &common-env
-  PUID: $PUID
-  PGID: $PGID
-  TZ: $TZ
-
-x-services-auth: &services-auth
-  SERVICES_USERNAME: admin
-  SERVICES_PASSWORD: "mediarr"
+name: qbittorrent-vpn
 
 # ─── Services ────────────────────────────────────────────────────────────────
 
@@ -116,19 +100,21 @@ services:
   qbittorrent:
     image: linuxserver/qbittorrent:4.6.7
     environment:
-      <<: *common-env
+      PGID: $PGID
+      PUID: $PUID
+      TZ: $TZ
+      UMASK: "002"
       WEBUI_PORT: "8080"
     volumes:
       - type: bind
         source: /DATA/AppData/$AppID/qbittorrent
         target: /config
       - type: bind
-        source: /DATA/Downloads
-        target: /downloads
-    <<: *vpn-service
-    depends_on:
-      vpn:
-        condition: service_healthy
+        source: /DATA
+        target: /DATA
+    network_mode: service:vpn
+    restart: unless-stopped
+
     x-casaos:
       envs:
         - container: WEBUI_PORT
@@ -141,6 +127,10 @@ services:
         - container: /downloads
           description:
             en_us: Download directory
+      ports:
+        - container: "8080"
+          description:
+            en_us: WebUI HTTP Port
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:v3.4.5
@@ -185,3 +175,25 @@ x-casaos:
     en_us: qBittorrent (VPN)
   index: /
   port_map: 8080
+  tips:
+
+    before_install:
+      en_us: |
+        Default Account
+        
+        | Username | Password |
+        |----------|----------|
+        | `admin`    | Get from log |
+
+        Passwords need to be viewed in the log
+
+        Default Accessible Path in qBittorrent
+        
+        | Name | Value |
+        | ---- | ----- |
+        | DATA Path | `/DATA` |
+        | Downloads Path | `/DATA/Downloads` |
+        | Media Path | `/DATA/Media` |
+
+        The paths of other DATA subdirectories in CasaOS are also similar.
+        Please make sure you use the correct path when using qBittorrent.
