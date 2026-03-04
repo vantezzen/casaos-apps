@@ -86,6 +86,44 @@ services:
           description:
             en_us: Gluetun VPN state and certificates
 
+  # Writes qBittorrent.conf with localhost auth bypass before qBittorrent starts.
+  # Without this, the VPN_PORT_FORWARDING_UP_COMMAND gets 403 Forbidden.
+  qb-init:
+    image: alpine:3.19
+    volumes:
+      - type: bind
+        source: /DATA/AppData/$AppID/qbittorrent
+        target: /qb-config
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/qb-config/.qb-init-done"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 3s
+    command:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /qb-config/qBittorrent
+        if [ ! -f /qb-config/qBittorrent/qBittorrent.conf ]; then
+          {
+            echo '[BitTorrent]'
+            echo 'Session\DefaultSavePath=/DATA/Downloads'
+            echo 'Session\TempPath=/DATA/Downloads/incomplete/'
+            echo 'Session\TempPathEnabled=true'
+            echo ''
+            echo '[Preferences]'
+            echo 'WebUI\AuthSubnetWhitelistEnabled=true'
+            echo 'WebUI\AuthSubnetWhitelist=127.0.0.0/8'
+          } > /qb-config/qBittorrent/qBittorrent.conf
+          echo "[qb-init] Config written."
+        else
+          echo "[qb-init] Config already exists."
+        fi
+        touch /qb-config/.qb-init-done
+        exec tail -f /dev/null
+
   qbittorrent:
     image: linuxserver/qbittorrent:4.6.7
     environment:
@@ -101,6 +139,9 @@ services:
       - type: bind
         source: /DATA
         target: /DATA
+    depends_on:
+      qb-init:
+        condition: service_healthy
     network_mode: service:vpn
     restart: unless-stopped
     x-casaos:
