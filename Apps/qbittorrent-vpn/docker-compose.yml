@@ -5,49 +5,38 @@ name: qbittorrent-vpn
 services:
   vpn:
     image: qmcgaw/gluetun:latest
-    container_name: mediarr-vpn
     cap_add:
       - NET_ADMIN
     networks:
-      - mediarr_net
+      - qbittorrentvpn_net
     volumes:
       - type: bind
         source: /DATA/AppData/$AppID/gluetun
         target: /tmp/gluetun
     environment:
-      # VPN provider — supports all Gluetun providers (protonvpn, mullvad, nordvpn, etc.)
       VPN_SERVICE_PROVIDER: protonvpn
-      # VPN protocol — openvpn or wireguard
       VPN_TYPE: openvpn
-      # OpenVPN credentials (used when VPN_TYPE=openvpn)
       OPENVPN_USER: ""
       OPENVPN_PASSWORD: ""
-      # WireGuard credentials (used when VPN_TYPE=wireguard)
       WIREGUARD_PRIVATE_KEY: ""
       WIREGUARD_ADDRESS: ""
-      # Server preference
       SERVER_COUNTRIES: Netherlands
-      # Port forwarding (set to off if your VPN provider doesn't support it)
       VPN_PORT_FORWARDING: "on"
-      # When a forwarded port is obtained, update qBittorrent's listening port automatically
       VPN_PORT_FORWARDING_UP_COMMAND: >-
         /bin/sh -c
         'wget -q -O- --post-data "json={\"listen_port\":{{PORT}}}"
         "http://localhost:8080/api/v2/app/setPreferences" 2>/dev/null; true'
-      LOG_LEVEL: debug
+      LOG_LEVEL: warning
     ports:
-      # qBittorrent WebUI
       - target: 8080
         published: "8080"
         protocol: tcp
-      # qBittorrent torrent port (for seeding/leeching)
       - target: 6881
         published: "6881"
         protocol: tcp
       - target: 6881
         published: "6881"
         protocol: udp
-      # FlareSolverr
       - target: 8191
         published: "8191"
         protocol: tcp
@@ -84,13 +73,13 @@ services:
             en_us: qBittorrent WebUI
         - container: "8191"
           description:
-            en_us: FlareSolverr
+            en_us: FlareSolverr (internal Cloudflare bypass proxy)
         - container: "6881"
           description:
-            en_us: qBittorrent torrent port (TCP)
+            en_us: Torrent port (TCP)
         - container: "6881"
           description:
-            en_us: qBittorrent torrent port (UDP)
+            en_us: Torrent port (UDP)
           protocol: udp
       volumes:
         - container: /tmp/gluetun
@@ -100,8 +89,8 @@ services:
   qbittorrent:
     image: linuxserver/qbittorrent:4.6.7
     environment:
-      PGID: $PGID
       PUID: $PUID
+      PGID: $PGID
       TZ: $TZ
       UMASK: "002"
       WEBUI_PORT: "8080"
@@ -114,7 +103,6 @@ services:
         target: /DATA
     network_mode: service:vpn
     restart: unless-stopped
-
     x-casaos:
       envs:
         - container: WEBUI_PORT
@@ -124,13 +112,9 @@ services:
         - container: /config
           description:
             en_us: qBittorrent configuration
-        - container: /downloads
+        - container: /DATA
           description:
-            en_us: Download directory
-      ports:
-        - container: "8080"
-          description:
-            en_us: WebUI HTTP Port
+            en_us: Full data directory (downloads, media, etc.)
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:v3.4.5
@@ -139,29 +123,35 @@ services:
       LOG_LEVEL: info
       LOG_HTML: "false"
       CAPTCHA_SOLVER: "none"
-    <<: *vpn-service
+    network_mode: service:vpn
+    restart: unless-stopped
     x-casaos:
       envs:
         - container: LOG_LEVEL
           description:
             en_us: FlareSolverr log verbosity (info, debug, warning)
 
+# ─── Networks ─────────────────────────────────────────────────────────────────
+
 networks:
-  mediarr_net:
-    name: mediarr_net
+  qbittorrentvpn_net:
     driver: bridge
+
+# ─── CasaOS App Metadata ─────────────────────────────────────────────────────
 
 x-casaos:
   architectures:
     - amd64
     - arm64
-  main: hub
+  main: vpn
   store_app_id: qbittorrent-vpn
   author: vantezzen
-  category: Media
+  category: Downloader
   description:
     en_us: |
-      qBittorrent with built-in VPN (powered by Gluetun) and FlareSolverr for bypassing Cloudflare protections.
+      qBittorrent with a built-in VPN (powered by Gluetun) and FlareSolverr for bypassing Cloudflare-protected torrent sites.
+
+      All torrent traffic is routed through your VPN. Supports ProtonVPN, Mullvad, NordVPN, and any other Gluetun-compatible provider.
   developer: vantezzen
   icon: https://cdn.jsdelivr.net/gh/IceWhaleTech/CasaOS-AppStore@main/Apps/qBittorrent/icon.png
   screenshot_link:
@@ -174,26 +164,29 @@ x-casaos:
   title:
     en_us: qBittorrent (VPN)
   index: /
-  port_map: 8080
+  port_map: "8080"
   tips:
-
     before_install:
       en_us: |
-        Default Account
-        
-        | Username | Password |
-        |----------|----------|
-        | `admin`    | Get from log |
+        Set your VPN credentials in the **vpn** service environment variables before starting.
 
-        Passwords need to be viewed in the log
+        **ProtonVPN (OpenVPN) example:**
+        | Variable | Value |
+        |---|---|
+        | `VPN_SERVICE_PROVIDER` | `protonvpn` |
+        | `VPN_TYPE` | `openvpn` |
+        | `OPENVPN_USER` | Your username **+ `+pmp`** (e.g. `user+pmp`) |
+        | `OPENVPN_PASSWORD` | Your password |
 
-        Default Accessible Path in qBittorrent
-        
-        | Name | Value |
-        | ---- | ----- |
-        | DATA Path | `/DATA` |
-        | Downloads Path | `/DATA/Downloads` |
-        | Media Path | `/DATA/Media` |
+        **Mullvad (WireGuard) example:**
+        | Variable | Value |
+        |---|---|
+        | `VPN_SERVICE_PROVIDER` | `mullvad` |
+        | `VPN_TYPE` | `wireguard` |
+        | `WIREGUARD_PRIVATE_KEY` | Your WireGuard private key |
+        | `WIREGUARD_ADDRESS` | e.g. `10.64.0.1/32` |
 
-        The paths of other DATA subdirectories in CasaOS are also similar.
-        Please make sure you use the correct path when using qBittorrent.
+        ⚠️ Set `VPN_PORT_FORWARDING=off` if your provider doesn't support it!
+
+        On first launch, qBittorrent generates a temporary password — find it in the container logs.
+        Downloads and media are accessible under `/DATA` inside the container.
