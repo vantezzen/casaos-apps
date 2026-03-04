@@ -86,44 +86,6 @@ services:
           description:
             en_us: Gluetun VPN state and certificates
 
-  # Writes qBittorrent.conf with localhost auth bypass before qBittorrent starts.
-  # Without this, the VPN_PORT_FORWARDING_UP_COMMAND gets 403 Forbidden.
-  qb-init:
-    image: alpine:3.19
-    volumes:
-      - type: bind
-        source: /DATA/AppData/$AppID/qbittorrent
-        target: /qb-config
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "test", "-f", "/qb-config/.qb-init-done"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-      start_period: 3s
-    command:
-      - /bin/sh
-      - -c
-      - |
-        mkdir -p /qb-config/qBittorrent
-        if [ ! -f /qb-config/qBittorrent/qBittorrent.conf ]; then
-          {
-            echo '[BitTorrent]'
-            echo 'Session\DefaultSavePath=/DATA/Downloads'
-            echo 'Session\TempPath=/DATA/Downloads/incomplete/'
-            echo 'Session\TempPathEnabled=true'
-            echo ''
-            echo '[Preferences]'
-            echo 'WebUI\AuthSubnetWhitelistEnabled=true'
-            echo 'WebUI\AuthSubnetWhitelist=127.0.0.0/8'
-          } > /qb-config/qBittorrent/qBittorrent.conf
-          echo "[qb-init] Config written."
-        else
-          echo "[qb-init] Config already exists."
-        fi
-        touch /qb-config/.qb-init-done
-        exec tail -f /dev/null
-
   qbittorrent:
     image: linuxserver/qbittorrent:4.6.7
     environment:
@@ -137,11 +99,8 @@ services:
         source: /DATA/AppData/$AppID/qbittorrent
         target: /config
       - type: bind
-        source: /DATA
-        target: /DATA
-    depends_on:
-      qb-init:
-        condition: service_healthy
+        source: /DATA/Downloads
+        target: /downloads
     network_mode: service:vpn
     restart: unless-stopped
     x-casaos:
@@ -209,7 +168,9 @@ x-casaos:
   tips:
     before_install:
       en_us: |
-        Set your VPN credentials in the **vpn** service environment variables before starting.
+        ## Setup
+
+        1. Set your VPN credentials in the **vpn** service environment variables before starting.
 
         **ProtonVPN (OpenVPN) example:**
         | Variable | Value |
@@ -229,5 +190,31 @@ x-casaos:
 
         ⚠️ Set `VPN_PORT_FORWARDING=off` if your provider doesn't support it!
 
-        On first launch, qBittorrent generates a temporary password — find it in the container logs.
-        Downloads and media are accessible under `/DATA` inside the container.
+        2. On first launch, qBittorrent generates a temporary password — find it in the container logs.
+        Log in with username `admin` and that password, then change it in **Settings → Web UI**.
+
+        3. In qBittorrent **Settings → Web UI**, enable **"Bypass authentication for clients on localhost"**.
+        This is required for automatic VPN port forwarding to work.
+
+        4. In qBittorrent **Settings → Downloads**, set the **Default Save Path** to `/DATA/Downloads`.
+
+        5. Restart the app so the VPN can set the correct listen port in qBittorrent.
+
+        ## Connecting Radarr, Sonarr, or Prowlarr
+
+        qBittorrent's port is published directly on your CasaOS device, so any other app can reach it.
+
+        In each app's download client settings, add qBittorrent with:
+        | Field    | Value |
+        |---|---|
+        | Host     | Your CasaOS device's local IP (e.g. `192.168.1.100`) |
+        | Port     | `8080` |
+        | Username | `admin` |
+        | Password | Your qBittorrent password |
+        | Category | `radarr`, `sonarr`, or `prowlarr` (keeps downloads organized) |
+
+        **Path consistency (important!):** For Radarr/Sonarr to find and import completed downloads, they must see the same file paths as qBittorrent. In your Radarr/Sonarr app's volume settings, add:
+        - Host path: `/DATA/Downloads` → Container path: `/downloads`
+
+        Then set root folders in Radarr to `/DATA/Media/Movies` and Sonarr to `/DATA/Media/TV Shows`.
+        Downloads land in `/DATA/Downloads` — the same path both apps see.
